@@ -1,0 +1,1499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>VeroFlow — Autonomous Android Testing</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Orbitron:wght@400;700;900&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --bg: #050810;
+    --bg2: #080d1a;
+    --bg3: #0c1220;
+    --card: rgba(12,20,40,0.8);
+    --border: rgba(0,220,130,0.15);
+    --border-bright: rgba(0,220,130,0.5);
+    --green: #00dc82;
+    --green-dim: rgba(0,220,130,0.08);
+    --cyan: #00d4ff;
+    --cyan-dim: rgba(0,212,255,0.08);
+    --red: #ff4567;
+    --orange: #ff9500;
+    --purple: #a855f7;
+    --text: #e2e8f0;
+    --text-dim: #64748b;
+    --text-mid: #94a3b8;
+    --glow: 0 0 20px rgba(0,220,130,0.3);
+    --glow-cyan: 0 0 20px rgba(0,212,255,0.3);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Inter', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── Grid Bg ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0; z-index: 0;
+    background-image:
+      linear-gradient(rgba(0,220,130,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,220,130,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+  }
+
+  /* ── Scanline overlay ── */
+  body::after {
+    content: '';
+    position: fixed; inset: 0; z-index: 0;
+    background: repeating-linear-gradient(
+      0deg, transparent, transparent 2px,
+      rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px
+    );
+    pointer-events: none;
+  }
+
+  .orbitron { font-family: 'Orbitron', sans-serif; }
+  .mono { font-family: 'Space Mono', monospace; }
+
+  /* ── Auth Screen ── */
+  #auth-screen {
+    position: fixed; inset: 0; z-index: 100;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--bg);
+  }
+  .auth-card {
+    width: 100%; max-width: 440px; position: relative; z-index: 1;
+    background: var(--card);
+    border: 1px solid var(--border-bright);
+    border-radius: 16px;
+    padding: 40px;
+    backdrop-filter: blur(20px);
+    box-shadow: 0 0 60px rgba(0,220,130,0.1), inset 0 1px 0 rgba(255,255,255,0.05);
+  }
+  .auth-card::before {
+    content: ''; position: absolute; top: -1px; left: 20%; right: 20%;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--green), transparent);
+    border-radius: 2px;
+  }
+
+  /* ── Input ── */
+  .vf-input {
+    width: 100%;
+    background: rgba(0,0,0,0.4);
+    border: 1px solid rgba(0,220,130,0.2);
+    border-radius: 8px;
+    padding: 12px 16px;
+    color: var(--text);
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+    outline: none;
+    transition: all 0.2s;
+  }
+  .vf-input:focus {
+    border-color: var(--green);
+    box-shadow: 0 0 0 3px rgba(0,220,130,0.1);
+  }
+  .vf-input::placeholder { color: var(--text-dim); }
+
+  /* ── Buttons ── */
+  .btn-primary {
+    width: 100%;
+    background: linear-gradient(135deg, #00dc82, #00b469);
+    border: none; border-radius: 8px;
+    padding: 13px; color: #000;
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 700; font-size: 13px;
+    letter-spacing: 1px; cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: 0 4px 20px rgba(0,220,130,0.3);
+  }
+  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 8px 30px rgba(0,220,130,0.4); }
+  .btn-primary:active { transform: translateY(0); }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+  .btn-ghost {
+    background: transparent;
+    border: 1px solid var(--border-bright);
+    border-radius: 8px; padding: 10px 20px;
+    color: var(--green); cursor: pointer;
+    font-family: 'Space Mono', monospace; font-size: 12px;
+    transition: all 0.2s;
+  }
+  .btn-ghost:hover { background: var(--green-dim); box-shadow: var(--glow); }
+
+  /* ── Dashboard Layout ── */
+  #dashboard { display: none; min-height: 100vh; position: relative; z-index: 1; }
+
+  .sidebar {
+    position: fixed; left: 0; top: 0; bottom: 0; width: 240px;
+    background: var(--bg2);
+    border-right: 1px solid var(--border);
+    z-index: 50; display: flex; flex-direction: column;
+    padding: 24px 0;
+    transition: transform 0.3s;
+  }
+  .sidebar-logo { padding: 0 24px 24px; border-bottom: 1px solid var(--border); }
+  .nav-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 24px; cursor: pointer;
+    color: var(--text-dim); font-size: 13px;
+    transition: all 0.2s; border-left: 3px solid transparent;
+    font-family: 'Space Mono', monospace;
+  }
+  .nav-item:hover { color: var(--text); background: var(--green-dim); }
+  .nav-item.active { color: var(--green); background: var(--green-dim); border-left-color: var(--green); }
+  .nav-icon { font-size: 16px; width: 20px; text-align: center; }
+
+  .main-content {
+    margin-left: 240px;
+    padding: 0;
+    min-height: 100vh;
+  }
+
+  .topbar {
+    position: sticky; top: 0; z-index: 40;
+    background: rgba(5,8,16,0.9);
+    border-bottom: 1px solid var(--border);
+    backdrop-filter: blur(20px);
+    padding: 16px 32px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+
+  /* ── Cards ── */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    backdrop-filter: blur(10px);
+    transition: border-color 0.2s;
+  }
+  .card:hover { border-color: rgba(0,220,130,0.3); }
+
+  /* ── Stat Cards ── */
+  .stat-card {
+    padding: 24px;
+    position: relative; overflow: hidden;
+  }
+  .stat-card::after {
+    content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--green), transparent);
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  .stat-card:hover::after { opacity: 1; }
+  .stat-value {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 32px; font-weight: 900;
+    line-height: 1;
+  }
+
+  /* ── Upload Zone ── */
+  .upload-zone {
+    border: 2px dashed rgba(0,220,130,0.3);
+    border-radius: 16px; padding: 60px 40px;
+    text-align: center; cursor: pointer;
+    transition: all 0.3s; position: relative; overflow: hidden;
+    background: var(--green-dim);
+  }
+  .upload-zone:hover, .upload-zone.drag-over {
+    border-color: var(--green);
+    background: rgba(0,220,130,0.12);
+    box-shadow: 0 0 40px rgba(0,220,130,0.15);
+  }
+  .upload-icon { font-size: 56px; margin-bottom: 16px; display: block; }
+
+  /* ── Phase Pipeline ── */
+  .phase-item {
+    display: flex; align-items: flex-start; gap: 16px;
+    padding: 14px 16px; border-radius: 10px;
+    border: 1px solid transparent;
+    transition: all 0.3s; position: relative;
+  }
+  .phase-item.active {
+    background: rgba(0,212,255,0.08);
+    border-color: rgba(0,212,255,0.3);
+    box-shadow: 0 0 20px rgba(0,212,255,0.1);
+  }
+  .phase-item.done {
+    background: var(--green-dim);
+    border-color: rgba(0,220,130,0.25);
+  }
+  .phase-item.failed {
+    background: rgba(255,69,103,0.08);
+    border-color: rgba(255,69,103,0.3);
+  }
+  .phase-dot {
+    width: 36px; height: 36px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; flex-shrink: 0;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--border);
+    transition: all 0.3s;
+  }
+  .phase-item.active .phase-dot {
+    background: rgba(0,212,255,0.15);
+    border-color: var(--cyan);
+    box-shadow: 0 0 12px rgba(0,212,255,0.4);
+    animation: pulseDot 1.5s ease-in-out infinite;
+  }
+  .phase-item.done .phase-dot {
+    background: rgba(0,220,130,0.15);
+    border-color: var(--green);
+  }
+  @keyframes pulseDot {
+    0%, 100% { box-shadow: 0 0 12px rgba(0,212,255,0.4); }
+    50% { box-shadow: 0 0 24px rgba(0,212,255,0.8); }
+  }
+  .phase-tag {
+    font-family: 'Space Mono', monospace; font-size: 10px;
+    padding: 2px 8px; border-radius: 4px;
+    background: rgba(0,220,130,0.1); color: var(--green);
+    border: 1px solid rgba(0,220,130,0.2);
+  }
+
+  /* ── Log Console ── */
+  .log-console {
+    background: #020408; border: 1px solid var(--border);
+    border-radius: 10px; padding: 16px;
+    font-family: 'Space Mono', monospace; font-size: 12px;
+    height: 220px; overflow-y: auto; line-height: 1.8;
+  }
+  .log-console::-webkit-scrollbar { width: 4px; }
+  .log-console::-webkit-scrollbar-track { background: transparent; }
+  .log-console::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  /* ── Progress Ring ── */
+  .progress-ring { position: relative; width: 120px; height: 120px; }
+  .progress-ring svg { transform: rotate(-90deg); }
+  .progress-ring-text {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+  }
+
+  /* ── Badge ── */
+  .badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 4px 10px; border-radius: 20px; font-size: 11px;
+    font-family: 'Space Mono', monospace; font-weight: 700;
+  }
+  .badge-green { background: rgba(0,220,130,0.12); color: var(--green); border: 1px solid rgba(0,220,130,0.25); }
+  .badge-red { background: rgba(255,69,103,0.12); color: var(--red); border: 1px solid rgba(255,69,103,0.25); }
+  .badge-orange { background: rgba(255,149,0,0.12); color: var(--orange); border: 1px solid rgba(255,149,0,0.25); }
+  .badge-cyan { background: rgba(0,212,255,0.12); color: var(--cyan); border: 1px solid rgba(0,212,255,0.25); }
+
+  /* ── Pulse dot ── */
+  .live-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 8px var(--green);
+    animation: liveBlink 1.5s ease-in-out infinite;
+    display: inline-block;
+  }
+  @keyframes liveBlink {
+    0%, 100% { opacity: 1; } 50% { opacity: 0.3; }
+  }
+
+  /* ── Glow text ── */
+  .glow-text { text-shadow: 0 0 20px currentColor; }
+
+  /* ── Fade in ── */
+  .fade-in { animation: fadeIn 0.4s ease; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* ── Spinner ── */
+  .spinner {
+    width: 20px; height: 20px; border-radius: 50%;
+    border: 2px solid rgba(0,220,130,0.2);
+    border-top-color: var(--green);
+    animation: spin 0.8s linear infinite; display: inline-block;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Page sections ── */
+  .page { display: none; padding: 32px; }
+  .page.active { display: block; animation: fadeIn 0.3s ease; }
+
+  /* ── Tab bar ── */
+  .tab-bar { display: flex; gap: 4px; background: var(--bg2); border-radius: 10px; padding: 4px; }
+  .tab {
+    padding: 8px 20px; border-radius: 8px; cursor: pointer;
+    font-size: 13px; font-family: 'Space Mono', monospace;
+    color: var(--text-dim); transition: all 0.2s;
+  }
+  .tab.active { background: var(--green); color: #000; font-weight: 700; }
+
+  /* ── Results table ── */
+  .results-table { width: 100%; border-collapse: collapse; }
+  .results-table th {
+    text-align: left; padding: 10px 16px;
+    font-size: 11px; font-family: 'Space Mono', monospace;
+    color: var(--text-dim); letter-spacing: 1px; text-transform: uppercase;
+    border-bottom: 1px solid var(--border);
+  }
+  .results-table td {
+    padding: 12px 16px; font-size: 13px;
+    border-bottom: 1px solid rgba(0,220,130,0.05);
+  }
+  .results-table tr:hover td { background: var(--green-dim); }
+
+  /* ── Notification Toast ── */
+  #toast {
+    position: fixed; bottom: 24px; right: 24px; z-index: 999;
+    padding: 14px 20px; border-radius: 10px;
+    font-family: 'Space Mono', monospace; font-size: 13px;
+    backdrop-filter: blur(20px); pointer-events: none;
+    transform: translateY(100px); opacity: 0;
+    transition: all 0.3s;
+  }
+  #toast.show { transform: translateY(0); opacity: 1; }
+  #toast.success { background: rgba(0,220,130,0.15); border: 1px solid var(--green); color: var(--green); }
+  #toast.error { background: rgba(255,69,103,0.15); border: 1px solid var(--red); color: var(--red); }
+
+  /* ── Mobile ── */
+  #menu-toggle { display: none; }
+  @media (max-width: 768px) {
+    .sidebar { transform: translateX(-100%); }
+    .sidebar.open { transform: translateX(0); }
+    .main-content { margin-left: 0; }
+    #menu-toggle { display: block; }
+    .page { padding: 20px; }
+    .topbar { padding: 14px 20px; }
+    .stat-value { font-size: 24px; }
+  }
+
+  /* ── Auth tabs ── */
+  .auth-tab-bar { display: flex; background: rgba(0,0,0,0.3); border-radius: 8px; padding: 4px; margin-bottom: 24px; }
+  .auth-tab { flex: 1; text-align: center; padding: 8px; border-radius: 6px; cursor: pointer; font-size: 13px; font-family: 'Space Mono', monospace; color: var(--text-dim); transition: all 0.2s; }
+  .auth-tab.active { background: var(--green); color: #000; font-weight: 700; }
+
+  /* ── Mini chart bars ── */
+  .mini-bar {
+    display: inline-block; width: 4px; border-radius: 2px;
+    background: var(--green); opacity: 0.6;
+    animation: barPulse 1.5s ease-in-out infinite;
+  }
+  @keyframes barPulse {
+    0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(0.3); }
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════ AUTH SCREEN ═══════════════════════════ -->
+<div id="auth-screen">
+  <!-- Ambient orbs -->
+  <div style="position:fixed;top:-200px;left:-200px;width:600px;height:600px;border-radius:50%;background:radial-gradient(circle,rgba(0,220,130,0.06) 0%,transparent 70%);pointer-events:none;"></div>
+  <div style="position:fixed;bottom:-200px;right:-200px;width:600px;height:600px;border-radius:50%;background:radial-gradient(circle,rgba(0,212,255,0.06) 0%,transparent 70%);pointer-events:none;"></div>
+
+  <div class="auth-card fade-in">
+    <!-- Logo -->
+    <div style="text-align:center;margin-bottom:32px;">
+      <div style="font-family:'Orbitron',sans-serif;font-size:28px;font-weight:900;color:var(--green);letter-spacing:3px;text-shadow:0 0 30px rgba(0,220,130,0.5);">VERO<span style="color:var(--cyan);">FLOW</span></div>
+      <div style="font-size:12px;color:var(--text-dim);margin-top:4px;font-family:'Space Mono',monospace;letter-spacing:2px;">AUTONOMOUS ANDROID TESTING</div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="auth-tab-bar">
+      <div class="auth-tab active" onclick="switchAuthTab('login')">LOGIN</div>
+      <div class="auth-tab" onclick="switchAuthTab('register')">REGISTER</div>
+    </div>
+
+    <!-- Login Form -->
+    <div id="login-form">
+      <div style="margin-bottom:16px;">
+        <label style="display:block;font-size:11px;color:var(--text-dim);font-family:'Space Mono',monospace;letter-spacing:1px;margin-bottom:8px;">EMAIL</label>
+        <input id="login-email" class="vf-input" type="email" placeholder="agent@veroflow.io"/>
+      </div>
+      <div style="margin-bottom:24px;">
+        <label style="display:block;font-size:11px;color:var(--text-dim);font-family:'Space Mono',monospace;letter-spacing:1px;margin-bottom:8px;">PASSWORD</label>
+        <input id="login-password" class="vf-input" type="password" placeholder="••••••••"/>
+      </div>
+      <button class="btn-primary" onclick="handleLogin()" id="login-btn">ACCESS SYSTEM</button>
+      <div style="text-align:center;margin-top:16px;">
+        <span style="font-size:12px;color:var(--text-dim);font-family:'Space Mono',monospace;">
+          Demo: <span style="color:var(--green);">demo@veroflow.io</span> / <span style="color:var(--green);">demo123</span>
+        </span>
+      </div>
+    </div>
+
+    <!-- Register Form -->
+    <div id="register-form" style="display:none;">
+      <div style="margin-bottom:14px;">
+        <label style="display:block;font-size:11px;color:var(--text-dim);font-family:'Space Mono',monospace;letter-spacing:1px;margin-bottom:8px;">USERNAME</label>
+        <input id="reg-name" class="vf-input" type="text" placeholder="John Tester"/>
+      </div>
+      <div style="margin-bottom:14px;">
+        <label style="display:block;font-size:11px;color:var(--text-dim);font-family:'Space Mono',monospace;letter-spacing:1px;margin-bottom:8px;">EMAIL</label>
+        <input id="reg-email" class="vf-input" type="email" placeholder="you@company.io"/>
+      </div>
+      <div style="margin-bottom:24px;">
+        <label style="display:block;font-size:11px;color:var(--text-dim);font-family:'Space Mono',monospace;letter-spacing:1px;margin-bottom:8px;">PASSWORD</label>
+        <input id="reg-password" class="vf-input" type="password" placeholder="min. 6 characters"/>
+      </div>
+      <button class="btn-primary" onclick="handleRegister()" id="reg-btn">CREATE ACCOUNT</button>
+    </div>
+    <div id="auth-error" style="display:none;margin-top:14px;padding:10px;background:rgba(255,69,103,0.1);border:1px solid rgba(255,69,103,0.3);border-radius:8px;color:var(--red);font-size:12px;font-family:'Space Mono',monospace;text-align:center;"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════ DASHBOARD ═══════════════════════════ -->
+<div id="dashboard">
+
+  <!-- Sidebar -->
+  <nav class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <div class="orbitron" style="font-size:18px;font-weight:900;color:var(--green);letter-spacing:2px;">VERO<span style="color:var(--cyan)">FLOW</span></div>
+      <div style="font-size:10px;color:var(--text-dim);font-family:'Space Mono',monospace;margin-top:2px;">v2.4.1 — PRODUCTION</div>
+    </div>
+    <div style="margin-top:16px;flex:1;">
+      <div class="nav-item active" onclick="showPage('overview')" id="nav-overview">
+        <span class="nav-icon">⬡</span> Overview
+      </div>
+      <div class="nav-item" onclick="showPage('upload')" id="nav-upload">
+        <span class="nav-icon">↑</span> Upload APK
+      </div>
+      <div class="nav-item" onclick="showPage('testing')" id="nav-testing">
+        <span class="nav-icon">◈</span> Test Runner
+      </div>
+      <div class="nav-item" onclick="showPage('reports')" id="nav-reports">
+        <span class="nav-icon">≡</span> Reports
+      </div>
+      <div class="nav-item" onclick="showPage('analytics')" id="nav-analytics">
+        <span class="nav-icon">◎</span> Analytics
+      </div>
+    </div>
+    <div style="padding:16px 24px;border-top:1px solid var(--border);">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,var(--green),var(--cyan));display:flex;align-items:center;justify-content:center;font-size:13px;color:#000;font-weight:700;" id="user-avatar">?</div>
+        <div>
+          <div style="font-size:13px;font-weight:600;" id="sidebar-username">Loading...</div>
+          <div style="font-size:11px;color:var(--text-dim);" id="sidebar-plan">Pro Plan</div>
+        </div>
+      </div>
+      <button onclick="logout()" style="width:100%;margin-top:12px;padding:8px;background:transparent;border:1px solid rgba(255,69,103,0.3);border-radius:6px;color:var(--red);font-size:12px;font-family:'Space Mono',monospace;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.background='rgba(255,69,103,0.1)'" onmouseout="this.style.background='transparent'">LOGOUT</button>
+    </div>
+  </nav>
+
+  <!-- Main -->
+  <div class="main-content">
+
+    <!-- Topbar -->
+    <div class="topbar">
+      <div style="display:flex;align-items:center;gap:16px;">
+        <button id="menu-toggle" onclick="document.getElementById('sidebar').classList.toggle('open')" style="background:none;border:none;color:var(--text);font-size:20px;cursor:pointer;">☰</button>
+        <div>
+          <div class="orbitron" style="font-size:14px;font-weight:700;color:var(--text);" id="page-title">OVERVIEW</div>
+          <div style="font-size:11px;color:var(--text-dim);font-family:'Space Mono',monospace;" id="page-subtitle">System dashboard</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:16px;">
+        <div style="display:flex;align-items:center;gap:6px;padding:6px 14px;background:var(--green-dim);border:1px solid var(--border-bright);border-radius:20px;">
+          <span class="live-dot"></span>
+          <span style="font-size:11px;font-family:'Space Mono',monospace;color:var(--green);">SYSTEM ONLINE</span>
+        </div>
+        <div style="font-size:12px;color:var(--text-dim);font-family:'Space Mono',monospace;" id="clock"></div>
+      </div>
+    </div>
+
+    <!-- ══ OVERVIEW PAGE ══ -->
+    <div class="page active" id="page-overview">
+      <!-- Stats Row -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:24px;">
+        <div class="card stat-card">
+          <div style="font-size:11px;color:var(--text-dim);font-family:'Space Mono',monospace;letter-spacing:1px;margin-bottom:12px;">TOTAL RUNS</div>
+          <div class="stat-value" style="color:var(--cyan);" id="stat-runs">—</div>
+          <div style="font-size:12px;color:var(--text-dim);margin-top:6px;">All time</div>
+        </div>
+        <div class="card stat-card">
+          <div style="font-size:11px;color:var(--text-dim);font-family:'Space Mono',monospace;letter-spacing:1px;margin-bottom:12px;">TESTS PASSED</div>
+          <div class="stat-value" style="color:var(--green);" id="stat-passed">—</div>
+          <div style="font-size:12px;color:var(--text-dim);margin-top:6px;" id="stat-rate">— success rate</div>
+        </div>
+        <div class="card stat-card">
+          <div style="font-size:11px;color:var(--text-dim);font-family:'Space Mono',monospace;letter-spacing:1px;margin-bottom:12px;">AUTO HEALED</div>
+          <div class="stat-value" style="color:var(--orange);" id="stat-healed">—</div>
+          <div style="font-size:12px;color:var(--text-dim);margin-top:6px;">Self-fixed</div>
+        </div>
+        <div class="card stat-card">
+          <div style="font-size:11px;color:var(--text-dim);font-family:'Space Mono',monospace;letter-spacing:1px;margin-bottom:12px;">RAG CACHE HITS</div>
+          <div class="stat-value" style="color:var(--purple);" id="stat-rag">—</div>
+          <div style="font-size:12px;color:var(--text-dim);margin-top:6px;">LLM calls saved</div>
+        </div>
+        <div class="card stat-card">
+          <div style="font-size:11px;color:var(--text-dim);font-family:'Space Mono',monospace;letter-spacing:1px;margin-bottom:12px;">AVG DURATION</div>
+          <div class="stat-value" style="color:var(--text);" id="stat-time">—</div>
+          <div style="font-size:12px;color:var(--text-dim);margin-top:6px;">seconds / run</div>
+        </div>
+      </div>
+
+      <!-- Charts Row -->
+      <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:24px;">
+        <div class="card" style="padding:24px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+            <div>
+              <div style="font-family:'Space Mono',monospace;font-size:12px;color:var(--text-dim);letter-spacing:1px;">TEST RESULTS TREND</div>
+              <div style="font-size:11px;color:var(--text-dim);margin-top:2px;">Last 10 runs</div>
+            </div>
+            <span class="badge badge-green">LIVE</span>
+          </div>
+          <canvas id="trendChart" height="100"></canvas>
+        </div>
+        <div class="card" style="padding:24px;">
+          <div style="font-family:'Space Mono',monospace;font-size:12px;color:var(--text-dim);letter-spacing:1px;margin-bottom:20px;">TEST DISTRIBUTION</div>
+          <canvas id="donutChart" height="160"></canvas>
+          <div style="display:flex;gap:12px;justify-content:center;margin-top:16px;flex-wrap:wrap;">
+            <div style="display:flex;align-items:center;gap:6px;font-size:11px;font-family:'Space Mono',monospace;">
+              <div style="width:10px;height:10px;border-radius:50%;background:var(--green);"></div> Passed
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;font-size:11px;font-family:'Space Mono',monospace;">
+              <div style="width:10px;height:10px;border-radius:50%;background:var(--red);"></div> Failed
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;font-size:11px;font-family:'Space Mono',monospace;">
+              <div style="width:10px;height:10px;border-radius:50%;background:var(--orange);"></div> Healed
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Pipeline visual -->
+      <div class="card" style="padding:24px;">
+        <div style="font-family:'Space Mono',monospace;font-size:12px;color:var(--text-dim);letter-spacing:1px;margin-bottom:20px;">10-PHASE PIPELINE ARCHITECTURE</div>
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;">
+          ${[
+            {n:1,icon:"📥",label:"NLP Input",tag:"NLP"},
+            {n:2,icon:"📸",label:"Screenshot",tag:"ADB"},
+            {n:3,icon:"🔍",label:"RAG Search",tag:"ChromaDB"},
+            {n:4,icon:"🤖",label:"LLM Generate",tag:"GPT-4V"},
+            {n:5,icon:"✅",label:"Validation",tag:"Syntax"},
+            {n:6,icon:"⚙️",label:"Appium Run",tag:"Appium"},
+            {n:7,icon:"👁️",label:"Hash Watch",tag:"MD5"},
+            {n:8,icon:"🔄",label:"Visual Diff",tag:"SSIM"},
+            {n:9,icon:"🩹",label:"Self Heal",tag:"AutoFix"},
+            {n:10,icon:"📊",label:"Report",tag:"Output"}
+          ].map(p=>`
+            <div style="background:rgba(0,220,130,0.05);border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center;transition:all 0.2s;cursor:default;" onmouseover="this.style.borderColor='var(--green)';this.style.background='rgba(0,220,130,0.1)'" onmouseout="this.style.borderColor='var(--border)';this.style.background='rgba(0,220,130,0.05)'">
+              <div style="font-size:24px;margin-bottom:6px;">${p.icon}</div>
+              <div style="font-size:10px;font-family:'Space Mono',monospace;color:var(--green);margin-bottom:4px;">P${p.n}</div>
+              <div style="font-size:12px;font-weight:500;margin-bottom:4px;">${p.label}</div>
+              <span style="font-size:10px;padding:2px 6px;background:rgba(0,212,255,0.1);color:var(--cyan);border-radius:4px;font-family:'Space Mono',monospace;">${p.tag}</span>
+            </div>`).join('')}
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ UPLOAD PAGE ══ -->
+    <div class="page" id="page-upload">
+      <div style="max-width:700px;">
+        <div class="card" style="padding:32px;margin-bottom:24px;">
+          <div style="font-family:'Orbitron',monospace;font-size:16px;color:var(--green);margin-bottom:8px;">UPLOAD APK</div>
+          <div style="font-size:13px;color:var(--text-dim);margin-bottom:28px;">Upload your Android APK and describe the app flow in plain English. VeroFlow handles the rest autonomously.</div>
+
+          <!-- Drop zone -->
+          <div class="upload-zone" id="drop-zone" onclick="document.getElementById('apk-input').click()">
+            <input type="file" id="apk-input" accept=".apk" style="display:none" onchange="handleFileSelect(event)"/>
+            <span class="upload-icon" id="upload-icon">📦</span>
+            <div style="font-family:'Orbitron',sans-serif;font-size:16px;font-weight:700;color:var(--green);margin-bottom:8px;" id="upload-title">DROP APK HERE</div>
+            <div style="font-size:13px;color:var(--text-dim);" id="upload-subtitle">or click to browse • .apk files only</div>
+            <div id="file-preview" style="display:none;margin-top:20px;padding:16px;background:rgba(0,0,0,0.3);border-radius:8px;text-align:left;">
+              <div style="display:flex;align-items:center;gap:12px;">
+                <span style="font-size:28px;">🤖</span>
+                <div>
+                  <div style="font-family:'Space Mono',monospace;font-size:13px;color:var(--green);" id="file-name">app.apk</div>
+                  <div style="font-size:12px;color:var(--text-dim);" id="file-size">0 MB</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Description -->
+          <div style="margin-top:20px;">
+            <label style="display:block;font-size:11px;color:var(--text-dim);font-family:'Space Mono',monospace;letter-spacing:1px;margin-bottom:8px;">APP FLOW DESCRIPTION (PLAIN ENGLISH)</label>
+            <textarea id="app-description" class="vf-input" rows="4" placeholder="This app has a login screen. User enters email and password, taps Submit, and reaches Dashboard. From Dashboard, user can navigate to Profile page and Payment screen..."></textarea>
+          </div>
+
+          <!-- Upload progress -->
+          <div id="upload-progress" style="display:none;margin-top:16px;">
+            <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+              <span style="font-size:12px;font-family:'Space Mono',monospace;color:var(--green);" id="progress-label">Uploading...</span>
+              <span style="font-size:12px;font-family:'Space Mono',monospace;color:var(--text-dim);" id="progress-pct">0%</span>
+            </div>
+            <div style="height:4px;background:rgba(255,255,255,0.1);border-radius:2px;overflow:hidden;">
+              <div id="progress-bar" style="height:100%;width:0%;background:linear-gradient(90deg,var(--green),var(--cyan));border-radius:2px;transition:width 0.3s;"></div>
+            </div>
+          </div>
+
+          <button class="btn-primary" style="margin-top:20px;" onclick="uploadAPK()" id="upload-btn">
+            INITIATE TEST RUN →
+          </button>
+        </div>
+
+        <!-- Info cards -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+          <div class="card" style="padding:20px;">
+            <div style="font-size:20px;margin-bottom:10px;">⚡</div>
+            <div style="font-size:13px;font-weight:600;margin-bottom:6px;">Zero Manual Work</div>
+            <div style="font-size:12px;color:var(--text-dim);">VeroFlow auto-generates, validates, and runs all test cases — no scripting required.</div>
+          </div>
+          <div class="card" style="padding:20px;">
+            <div style="font-size:20px;margin-bottom:10px;">🔄</div>
+            <div style="font-size:13px;font-weight:600;margin-bottom:6px;">Self-Healing</div>
+            <div style="font-size:12px;color:var(--text-dim);">When your UI changes, tests auto-update using visual diff + AI regeneration.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ TESTING PAGE ══ -->
+    <div class="page" id="page-testing">
+      <div style="display:grid;grid-template-columns:1fr 360px;gap:20px;align-items:start;">
+
+        <!-- Left: Phases -->
+        <div>
+          <div class="card" style="padding:24px;margin-bottom:16px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+              <div>
+                <div style="font-family:'Orbitron',sans-serif;font-size:14px;color:var(--green);">TEST EXECUTION</div>
+                <div style="font-size:12px;color:var(--text-dim);font-family:'Space Mono',monospace;margin-top:2px;" id="run-apk-label">No run active</div>
+              </div>
+              <div style="display:flex;gap:8px;align-items:center;" id="run-status-badge">
+                <span class="badge badge-cyan">IDLE</span>
+              </div>
+            </div>
+
+            <!-- Phases list -->
+            <div id="phases-list" style="display:flex;flex-direction:column;gap:8px;">
+              <!-- Generated by JS -->
+            </div>
+          </div>
+
+          <!-- Log console -->
+          <div class="card" style="padding:20px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+              <div style="font-family:'Space Mono',monospace;font-size:12px;color:var(--text-dim);letter-spacing:1px;">LIVE CONSOLE</div>
+              <button onclick="clearLogs()" style="font-size:11px;color:var(--text-dim);background:none;border:none;cursor:pointer;font-family:'Space Mono',monospace;" onmouseover="this.style.color='var(--green)'" onmouseout="this.style.color='var(--text-dim)'">CLEAR</button>
+            </div>
+            <div class="log-console" id="log-console">
+              <div style="color:var(--text-dim);">// Waiting for test run...</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: Progress + Results -->
+        <div style="display:flex;flex-direction:column;gap:16px;">
+
+          <!-- Progress ring -->
+          <div class="card" style="padding:24px;text-align:center;">
+            <div style="font-family:'Space Mono',monospace;font-size:11px;color:var(--text-dim);letter-spacing:1px;margin-bottom:16px;">COMPLETION</div>
+            <div style="position:relative;display:inline-block;">
+              <svg width="140" height="140" viewBox="0 0 140 140">
+                <circle cx="70" cy="70" r="56" fill="none" stroke="rgba(0,220,130,0.1)" stroke-width="8"/>
+                <circle id="progress-ring-circle" cx="70" cy="70" r="56" fill="none"
+                  stroke="var(--green)" stroke-width="8" stroke-linecap="round"
+                  stroke-dasharray="352" stroke-dashoffset="352"
+                  style="transform:rotate(-90deg);transform-origin:70px 70px;transition:stroke-dashoffset 0.5s;"/>
+              </svg>
+              <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+                <div class="orbitron" style="font-size:28px;font-weight:900;color:var(--green);" id="progress-pct-ring">0%</div>
+                <div style="font-size:11px;color:var(--text-dim);" id="progress-phases">0/10 phases</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Live counters -->
+          <div class="card" style="padding:20px;">
+            <div style="font-family:'Space Mono',monospace;font-size:11px;color:var(--text-dim);letter-spacing:1px;margin-bottom:14px;">LIVE METRICS</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+              <div style="padding:12px;background:rgba(0,220,130,0.05);border-radius:8px;text-align:center;">
+                <div class="orbitron" style="font-size:24px;color:var(--green);" id="live-passed">0</div>
+                <div style="font-size:11px;color:var(--text-dim);">PASSED</div>
+              </div>
+              <div style="padding:12px;background:rgba(255,69,103,0.05);border-radius:8px;text-align:center;">
+                <div class="orbitron" style="font-size:24px;color:var(--red);" id="live-failed">0</div>
+                <div style="font-size:11px;color:var(--text-dim);">FAILED</div>
+              </div>
+              <div style="padding:12px;background:rgba(255,149,0,0.05);border-radius:8px;text-align:center;">
+                <div class="orbitron" style="font-size:24px;color:var(--orange);" id="live-healed">0</div>
+                <div style="font-size:11px;color:var(--text-dim);">HEALED</div>
+              </div>
+              <div style="padding:12px;background:rgba(168,85,247,0.05);border-radius:8px;text-align:center;">
+                <div class="orbitron" style="font-size:24px;color:var(--purple);" id="live-rag">0</div>
+                <div style="font-size:11px;color:var(--text-dim);">RAG HITS</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Quick test -->
+          <div class="card" style="padding:20px;">
+            <div style="font-family:'Space Mono',monospace;font-size:11px;color:var(--text-dim);letter-spacing:1px;margin-bottom:12px;">QUICK DEMO RUN</div>
+            <div style="font-size:12px;color:var(--text-dim);margin-bottom:14px;">Run a simulated test with a demo APK to see the pipeline in action.</div>
+            <button class="btn-primary" onclick="startDemoRun()" id="demo-btn">▶ START DEMO RUN</button>
+          </div>
+
+          <!-- Result summary -->
+          <div class="card" style="padding:20px;display:none;" id="result-summary">
+            <div style="font-family:'Space Mono',monospace;font-size:11px;color:var(--text-dim);letter-spacing:1px;margin-bottom:14px;">FINAL REPORT</div>
+            <div id="result-table"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ REPORTS PAGE ══ -->
+    <div class="page" id="page-reports">
+      <div class="card" style="padding:24px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+          <div class="orbitron" style="font-size:14px;color:var(--green);">TEST RUN HISTORY</div>
+          <button class="btn-ghost" onclick="loadReports()">↻ REFRESH</button>
+        </div>
+        <div style="overflow-x:auto;">
+          <table class="results-table" id="runs-table">
+            <thead>
+              <tr>
+                <th>RUN ID</th>
+                <th>APK</th>
+                <th>PASSED</th>
+                <th>FAILED</th>
+                <th>HEALED</th>
+                <th>RAG HITS</th>
+                <th>DURATION</th>
+                <th>STATUS</th>
+              </tr>
+            </thead>
+            <tbody id="runs-tbody">
+              <tr><td colspan="8" style="text-align:center;color:var(--text-dim);padding:40px;">No test runs yet — upload an APK to begin</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ ANALYTICS PAGE ══ -->
+    <div class="page" id="page-analytics">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px;">
+        <div class="card" style="padding:24px;">
+          <div style="font-family:'Space Mono',monospace;font-size:12px;color:var(--text-dim);letter-spacing:1px;margin-bottom:16px;">RAG vs LLM CALLS</div>
+          <canvas id="ragChart" height="160"></canvas>
+        </div>
+        <div class="card" style="padding:24px;">
+          <div style="font-family:'Space Mono',monospace;font-size:12px;color:var(--text-dim);letter-spacing:1px;margin-bottom:16px;">PHASE DURATION BREAKDOWN</div>
+          <canvas id="phaseChart" height="160"></canvas>
+        </div>
+      </div>
+      <div class="card" style="padding:24px;">
+        <div style="font-family:'Space Mono',monospace;font-size:12px;color:var(--text-dim);letter-spacing:1px;margin-bottom:16px;">SYSTEM PERFORMANCE METRICS</div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;">
+          <div style="text-align:center;padding:20px;">
+            <div class="orbitron" style="font-size:36px;color:var(--green);" id="a-healsaved">94%</div>
+            <div style="font-size:13px;color:var(--text-dim);margin-top:4px;">Self-heal success rate</div>
+          </div>
+          <div style="text-align:center;padding:20px;">
+            <div class="orbitron" style="font-size:36px;color:var(--cyan);" id="a-ragefficiency">68%</div>
+            <div style="font-size:13px;color:var(--text-dim);margin-top:4px;">RAG cache efficiency</div>
+          </div>
+          <div style="text-align:center;padding:20px;">
+            <div class="orbitron" style="font-size:36px;color:var(--purple);" id="a-avgtime">24s</div>
+            <div style="font-size:13px;color:var(--text-dim);margin-top:4px;">Avg test run time</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /main-content -->
+</div><!-- /dashboard -->
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<script>
+// ══════════════════════════════════════════════════
+// CONFIG
+// ══════════════════════════════════════════════════
+const API = 'http://localhost:8000';
+let authToken = localStorage.getItem('vf_token');
+let currentRunId = null;
+let ws = null;
+let phasesDone = 0;
+let trendChart, donutChart, ragChart, phaseChart;
+let selectedFile = null;
+let runningDemo = false;
+
+// ══════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', () => {
+  // Demo user pre-populated
+  if (authToken) { showDashboard(); }
+  startClock();
+  initDropZone();
+  buildPhasesList();
+  initCharts();
+});
+
+function startClock() {
+  const el = document.getElementById('clock');
+  setInterval(() => {
+    el.textContent = new Date().toLocaleTimeString('en-US', {hour12:false});
+  }, 1000);
+}
+
+// ══════════════════════════════════════════════════
+// AUTH
+// ══════════════════════════════════════════════════
+function switchAuthTab(tab) {
+  document.getElementById('login-form').style.display = tab==='login'?'block':'none';
+  document.getElementById('register-form').style.display = tab==='register'?'block':'none';
+  document.querySelectorAll('.auth-tab').forEach((t,i) => {
+    t.classList.toggle('active', (i===0&&tab==='login')||(i===1&&tab==='register'));
+  });
+  document.getElementById('auth-error').style.display='none';
+}
+
+async function handleLogin() {
+  const email = document.getElementById('login-email').value.trim();
+  const pass = document.getElementById('login-password').value;
+  if (!email || !pass) { showAuthError('Please fill all fields'); return; }
+
+  const btn = document.getElementById('login-btn');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';
+
+  // Demo shortcut
+  if (email === 'demo@veroflow.io' && pass === 'demo123') {
+    // Register demo user if not exists, then login
+    try {
+      await fetch(`${API}/api/register`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:'Demo Agent',email,password:pass})});
+    } catch(e) {}
+  }
+
+  try {
+    const r = await fetch(`${API}/api/login`,{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({email, password:pass})
+    });
+    if (!r.ok) throw new Error((await r.json()).detail);
+    const data = await r.json();
+    authToken = data.access_token;
+    localStorage.setItem('vf_token', authToken);
+    showDashboard(data.username);
+  } catch(e) {
+    showAuthError(e.message || 'Login failed — check credentials');
+    btn.disabled=false; btn.innerHTML='ACCESS SYSTEM';
+  }
+}
+
+async function handleRegister() {
+  const name = document.getElementById('reg-name').value.trim();
+  const email = document.getElementById('reg-email').value.trim();
+  const pass = document.getElementById('reg-password').value;
+  if (!name||!email||!pass) { showAuthError('Please fill all fields'); return; }
+
+  const btn = document.getElementById('reg-btn');
+  btn.disabled=true; btn.innerHTML='<span class="spinner"></span>';
+
+  try {
+    const r = await fetch(`${API}/api/register`,{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({username:name, email, password:pass})
+    });
+    if (!r.ok) throw new Error((await r.json()).detail);
+    const data = await r.json();
+    authToken = data.access_token;
+    localStorage.setItem('vf_token', authToken);
+    showDashboard(data.username);
+  } catch(e) {
+    showAuthError(e.message || 'Registration failed');
+    btn.disabled=false; btn.innerHTML='CREATE ACCOUNT';
+  }
+}
+
+function showAuthError(msg) {
+  const el = document.getElementById('auth-error');
+  el.textContent='⚠ '+msg; el.style.display='block';
+}
+
+function showDashboard(username) {
+  document.getElementById('auth-screen').style.display='none';
+  document.getElementById('dashboard').style.display='block';
+  loadUserInfo();
+  loadStats();
+  loadReports();
+}
+
+function logout() {
+  authToken=null; localStorage.removeItem('vf_token');
+  document.getElementById('auth-screen').style.display='flex';
+  document.getElementById('dashboard').style.display='none';
+  if(ws) ws.close();
+}
+
+async function loadUserInfo() {
+  try {
+    const r = await authFetch('/api/me');
+    const user = await r.json();
+    const name = user.username || 'Agent';
+    document.getElementById('sidebar-username').textContent = name;
+    document.getElementById('sidebar-plan').textContent = user.plan || 'Pro Plan';
+    document.getElementById('user-avatar').textContent = name[0].toUpperCase();
+  } catch(e) {}
+}
+
+async function authFetch(url, opts={}) {
+  return fetch(API+url, {
+    ...opts, headers: { ...(opts.headers||{}), 'Authorization':'Bearer '+authToken }
+  });
+}
+
+// ══════════════════════════════════════════════════
+// NAVIGATION
+// ══════════════════════════════════════════════════
+const pageTitles = {
+  overview: ['OVERVIEW','System dashboard'],
+  upload:   ['UPLOAD APK','Start new test run'],
+  testing:  ['TEST RUNNER','Real-time execution'],
+  reports:  ['REPORTS','Test history'],
+  analytics:['ANALYTICS','Performance metrics']
+};
+
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  document.getElementById('page-'+name).classList.add('active');
+  document.getElementById('nav-'+name).classList.add('active');
+  const [title, sub] = pageTitles[name];
+  document.getElementById('page-title').textContent = title;
+  document.getElementById('page-subtitle').textContent = sub;
+  if(name==='reports') loadReports();
+  if(name==='analytics') loadAnalytics();
+  // Close mobile sidebar
+  document.getElementById('sidebar').classList.remove('open');
+}
+
+// ══════════════════════════════════════════════════
+// UPLOAD
+// ══════════════════════════════════════════════════
+function initDropZone() {
+  const zone = document.getElementById('drop-zone');
+  zone.addEventListener('dragover', e=>{e.preventDefault();zone.classList.add('drag-over');});
+  zone.addEventListener('dragleave', ()=>zone.classList.remove('drag-over'));
+  zone.addEventListener('drop', e=>{
+    e.preventDefault(); zone.classList.remove('drag-over');
+    const f = e.dataTransfer.files[0];
+    if(f) setFile(f);
+  });
+}
+
+function handleFileSelect(e) { if(e.target.files[0]) setFile(e.target.files[0]); }
+
+function setFile(file) {
+  if (!file.name.endsWith('.apk')) { showToast('Only .apk files allowed','error'); return; }
+  selectedFile = file;
+  document.getElementById('file-preview').style.display='block';
+  document.getElementById('file-name').textContent = file.name;
+  document.getElementById('file-size').textContent = (file.size/1024/1024).toFixed(2)+' MB';
+  document.getElementById('upload-title').textContent='APK SELECTED ✓';
+  document.getElementById('upload-subtitle').textContent='Ready to upload';
+  document.getElementById('upload-icon').textContent='✅';
+}
+
+async function uploadAPK() {
+  if(!selectedFile){showToast('Please select an APK file','error');return;}
+  const desc = document.getElementById('app-description').value;
+  const btn = document.getElementById('upload-btn');
+  btn.disabled=true; btn.innerHTML='<span class="spinner"></span> UPLOADING...';
+
+  const fd = new FormData();
+  fd.append('file', selectedFile);
+  fd.append('description', desc);
+
+  document.getElementById('upload-progress').style.display='block';
+  animateProgress();
+
+  try {
+    const r = await authFetch('/api/upload',{method:'POST',body:fd});
+    if(!r.ok) throw new Error((await r.json()).detail);
+    const data = await r.json();
+    document.getElementById('progress-bar').style.width='100%';
+    document.getElementById('progress-label').textContent='Upload complete!';
+    document.getElementById('progress-pct').textContent='100%';
+    showToast('APK uploaded! Starting test run...','success');
+    currentRunId = data.run_id;
+    setTimeout(()=>{
+      showPage('testing');
+      document.getElementById('run-apk-label').textContent=data.filename;
+      startWebSocket(data.run_id, data.filename);
+      btn.disabled=false; btn.innerHTML='INITIATE TEST RUN →';
+    }, 800);
+  } catch(e) {
+    showToast('Upload failed: '+e.message,'error');
+    btn.disabled=false; btn.innerHTML='INITIATE TEST RUN →';
+  }
+}
+
+function animateProgress() {
+  let p=0; const bar=document.getElementById('progress-bar');
+  const pct=document.getElementById('progress-pct');
+  const iv=setInterval(()=>{
+    p+=Math.random()*8;
+    if(p>=90){clearInterval(iv);p=90;}
+    bar.style.width=p+'%'; pct.textContent=Math.floor(p)+'%';
+  },200);
+}
+
+// ══════════════════════════════════════════════════
+// PHASES
+// ══════════════════════════════════════════════════
+const PHASES_META = [
+  {id:1,icon:"📥",name:"User Input Processing",tag:"NLP"},
+  {id:2,icon:"📸",name:"Screenshot Capture",tag:"ADB"},
+  {id:3,icon:"🔍",name:"RAG Vector Search",tag:"ChromaDB"},
+  {id:4,icon:"🤖",name:"Test Case Generation",tag:"LLM"},
+  {id:5,icon:"✅",name:"Validation Layer",tag:"Validator"},
+  {id:6,icon:"⚙️",name:"Appium Execution",tag:"Appium"},
+  {id:7,icon:"👁️",name:"APK Hash Watcher",tag:"Watcher"},
+  {id:8,icon:"🔄",name:"Visual Diff Detection",tag:"SSIM"},
+  {id:9,icon:"🩹",name:"Self Healing",tag:"AutoHeal"},
+  {id:10,icon:"📊",name:"Report Generation",tag:"Reporter"},
+];
+
+function buildPhasesList() {
+  const container = document.getElementById('phases-list');
+  container.innerHTML = PHASES_META.map(p=>`
+    <div class="phase-item" id="phase-item-${p.id}">
+      <div class="phase-dot" id="phase-dot-${p.id}">${p.icon}</div>
+      <div style="flex:1;min-width:0;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;">
+          <span style="font-size:13px;font-weight:500;">P${p.id} — ${p.name}</span>
+          <span class="phase-tag">${p.tag}</span>
+        </div>
+        <div style="font-size:11px;color:var(--text-dim);font-family:'Space Mono',monospace;" id="phase-status-${p.id}">Waiting...</div>
+      </div>
+      <div id="phase-check-${p.id}" style="font-size:16px;flex-shrink:0;color:var(--text-dim);">○</div>
+    </div>
+  `).join('');
+}
+
+function resetPhases() {
+  phasesDone=0; updateRing(0);
+  PHASES_META.forEach(p=>{
+    const item=document.getElementById('phase-item-'+p.id);
+    const dot=document.getElementById('phase-dot-'+p.id);
+    const status=document.getElementById('phase-status-'+p.id);
+    const check=document.getElementById('phase-check-'+p.id);
+    item.className='phase-item';
+    dot.textContent=p.icon;
+    status.textContent='Waiting...';
+    check.textContent='○'; check.style.color='var(--text-dim)';
+  });
+  document.getElementById('log-console').innerHTML='<div style="color:var(--text-dim);">// Initializing test run...</div>';
+  ['live-passed','live-failed','live-healed','live-rag'].forEach(id=>document.getElementById(id).textContent='0');
+  document.getElementById('result-summary').style.display='none';
+}
+
+function setPhaseActive(id) {
+  const item=document.getElementById('phase-item-'+id);
+  if(item){item.classList.add('active');document.getElementById('phase-status-'+id).textContent='Running...';}
+}
+
+function setPhaseComplete(id, status='success') {
+  const item=document.getElementById('phase-item-'+id);
+  const check=document.getElementById('phase-check-'+id);
+  if(!item) return;
+  item.classList.remove('active');
+  item.classList.add(status==='success'?'done':'failed');
+  check.textContent=status==='success'?'✓':'✗';
+  check.style.color=status==='success'?'var(--green)':'var(--red)';
+  document.getElementById('phase-status-'+id).textContent=status==='success'?'Completed':'Failed';
+  phasesDone++;
+  updateRing(phasesDone/10*100);
+  document.getElementById('progress-phases').textContent=phasesDone+'/10 phases';
+}
+
+function updateRing(pct) {
+  const circle=document.getElementById('progress-ring-circle');
+  const circumference=352;
+  const offset=circumference-(pct/100*circumference);
+  circle.style.strokeDashoffset=offset;
+  document.getElementById('progress-pct-ring').textContent=Math.round(pct)+'%';
+}
+
+// ══════════════════════════════════════════════════
+// WEBSOCKET / TEST RUN
+// ══════════════════════════════════════════════════
+function startWebSocket(runId, apkName) {
+  if(ws) ws.close();
+  resetPhases();
+  document.getElementById('run-status-badge').innerHTML='<span class="live-dot"></span><span class="badge badge-cyan">RUNNING</span>';
+  runningDemo = true;
+  document.getElementById('demo-btn').disabled=true;
+
+  const wsUrl = `ws://localhost:8000/ws/test/${runId}?apk=${encodeURIComponent(apkName||'app.apk')}`;
+  ws = new WebSocket(wsUrl);
+
+  ws.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    handleWSMessage(msg);
+  };
+  ws.onerror = ()=>{showToast('Connection error — running simulation','error');simulateOffline(runId, apkName);};
+  ws.onclose = ()=>{runningDemo=false;document.getElementById('demo-btn').disabled=false;};
+}
+
+function handleWSMessage(msg) {
+  switch(msg.type) {
+    case 'run_start':
+      appendLog(`⚡ Test run started — ${msg.apk} — ${msg.screens?.length||0} screens detected`,'var(--cyan)');
+      break;
+    case 'phase_start':
+      setPhaseActive(msg.phase);
+      appendLog(`[P${msg.phase}] ${msg.message}`,'var(--text-mid)');
+      break;
+    case 'phase_log':
+      appendLog(`  ${msg.log}`, msg.log.includes('✅')||msg.log.includes('PASSED')?'var(--green)': msg.log.includes('❌')||msg.log.includes('FAILED')?'var(--red)': msg.log.includes('⚠')?'var(--orange)':'var(--text-dim)');
+      // Update live counters from log
+      if(msg.log.includes('PASSED')) updateCounter('live-passed',1);
+      if(msg.log.includes('FAILED')) updateCounter('live-failed',1);
+      if(msg.log.includes('healed')||msg.log.includes('Healed')) updateCounter('live-healed',1);
+      if(msg.log.includes('HIT')) updateCounter('live-rag',1);
+      break;
+    case 'phase_done':
+      setPhaseComplete(msg.phase, msg.status);
+      if(msg.healed) updateCounter('live-healed', msg.healed);
+      break;
+    case 'run_complete':
+      showRunReport(msg.report);
+      document.getElementById('run-status-badge').innerHTML='<span class="badge badge-green">COMPLETE</span>';
+      loadStats(); loadReports();
+      showToast('Test run complete! 🎉','success');
+      break;
+  }
+}
+
+function updateCounter(id, delta) {
+  const el=document.getElementById(id);
+  if(el) el.textContent=parseInt(el.textContent||0)+delta;
+}
+
+function appendLog(text, color='var(--text)') {
+  const console = document.getElementById('log-console');
+  const line = document.createElement('div');
+  line.style.color=color;
+  const ts=new Date().toLocaleTimeString('en-US',{hour12:false});
+  line.innerHTML=`<span style="color:var(--text-dim)">[${ts}]</span> ${escHtml(text)}`;
+  console.appendChild(line);
+  console.scrollTop=console.scrollHeight;
+}
+
+function escHtml(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+function clearLogs(){document.getElementById('log-console').innerHTML='';}
+
+function showRunReport(report) {
+  const el=document.getElementById('result-summary');
+  el.style.display='block';
+  const results=report.results||[];
+  document.getElementById('result-table').innerHTML=`
+    <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
+      <span class="badge badge-green">✓ ${report.passed} PASSED</span>
+      <span class="badge badge-red">✗ ${report.failed} FAILED</span>
+      <span class="badge badge-orange">⚡ ${report.healed} HEALED</span>
+      <span class="badge badge-cyan">⏱ ${report.duration}s</span>
+    </div>
+    ${results.map(r=>`
+      <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);">
+        <span>${r.status==='PASSED'?'✅':'❌'}</span>
+        <span style="font-size:13px;flex:1;">${r.screen}</span>
+        <span class="badge ${r.status==='PASSED'?'badge-green':'badge-red'}">${r.status}</span>
+      </div>`).join('')}
+    <div style="font-size:11px;color:var(--text-dim);margin-top:12px;font-family:'Space Mono',monospace;">RAG Hits: ${report.rag_hits} | LLM Calls: ${report.llm_calls}</div>
+  `;
+}
+
+function startDemoRun() {
+  if(runningDemo){showToast('A test is already running','error');return;}
+  const runId='demo_'+Date.now();
+  document.getElementById('run-apk-label').textContent='demo-app-v1.2.apk';
+  startWebSocket(runId, 'demo-app-v1.2.apk');
+}
+
+// Offline simulation (when no backend)
+async function simulateOffline(runId, apkName) {
+  resetPhases();
+  const phases=[1,2,3,4,5,6,7,8,9,10];
+  const logs={
+    1:['Parsing NLP description...','Detected 4 screens','Flow graph constructed'],
+    2:['Installing APK via ADB...','📸 screen_1.png → Login Screen','📸 screen_2.png → Dashboard','📸 screen_3.png → Profile','CLIP vectors generated'],
+    3:['Querying ChromaDB...','✅ HIT  Login Screen → 0.92','❌ MISS Dashboard → 0.41','❌ MISS Profile Page → 0.35'],
+    4:['Calling LLM for 2 new screens...','🤖 Generated test case #1 — 4 assertions','🤖 Generated test case #2 — 6 assertions'],
+    5:['Validating syntax...','✓ Syntax valid','✓ Locators verified','✓ No duplicates'],
+    6:['Appium running on emulator...','✅ Login Screen → PASSED','✅ Dashboard → PASSED','❌ Profile Page → FAILED'],
+    7:['Registering APK hash...','Hash: a4f2c8b1','Watcher active — polling every 10s'],
+    8:['Running SSIM visual diff...','✅ Login Screen → SSIM=0.96 SAME','⚠️  Profile Page → SSIM=0.52 CHANGED'],
+    9:['Self-healing changed tests...','🩹 Auto-healed test case #1'],
+    10:['Generating report...','All data saved to ChromaDB']
+  };
+  document.getElementById('run-status-badge').innerHTML='<span class="live-dot"></span><span class="badge badge-cyan">RUNNING</span>';
+  runningDemo=true; document.getElementById('demo-btn').disabled=true;
+
+  for(const ph of phases){
+    setPhaseActive(ph);
+    for(const log of logs[ph]||[]){
+      await sleep(600+Math.random()*600);
+      appendLog(`[P${ph}] ${log}`,
+        log.includes('✅')||log.includes('PASSED')?'var(--green)':
+        log.includes('❌')||log.includes('FAILED')?'var(--red)':
+        log.includes('⚠')?'var(--orange)':'var(--text-dim)');
+      if(log.includes('PASSED')) updateCounter('live-passed',1);
+      if(log.includes('FAILED')) updateCounter('live-failed',1);
+      if(log.includes('HIT')) updateCounter('live-rag',1);
+    }
+    await sleep(300);
+    setPhaseComplete(ph,'success');
+    await sleep(300);
+  }
+
+  const fakeReport={run_id:runId,apk:apkName,passed:2,failed:1,healed:1,rag_hits:1,llm_calls:2,duration:24.3,
+    results:[{screen:'Login Screen',status:'PASSED'},{screen:'Dashboard',status:'PASSED'},{screen:'Profile Page',status:'FAILED'}]};
+  showRunReport(fakeReport);
+  document.getElementById('run-status-badge').innerHTML='<span class="badge badge-green">COMPLETE</span>';
+  showToast('Demo run complete! 🎉','success');
+  runningDemo=false; document.getElementById('demo-btn').disabled=false;
+
+  // Add to local stats
+  updateLocalStats(fakeReport);
+  loadAnalytics();
+}
+
+function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
+
+// ══════════════════════════════════════════════════
+// STATS & CHARTS
+// ══════════════════════════════════════════════════
+let localRuns = JSON.parse(localStorage.getItem('vf_local_runs')||'[]');
+
+function updateLocalStats(report){
+  localRuns.push(report);
+  localStorage.setItem('vf_local_runs', JSON.stringify(localRuns.slice(-20)));
+  renderLocalStats();
+  updateCharts();
+}
+
+async function loadStats(){
+  try {
+    const r=await authFetch('/api/stats');
+    const s=await r.json();
+    setStatText('stat-runs',s.total_runs||localRuns.length);
+    setStatText('stat-passed',s.total_passed||localRuns.reduce((a,r)=>a+r.passed,0));
+    setStatText('stat-rate',(s.success_rate||0)+'% success rate');
+    setStatText('stat-healed',s.total_healed||localRuns.reduce((a,r)=>a+r.healed,0));
+    setStatText('stat-rag',s.rag_hits||localRuns.reduce((a,r)=>a+r.rag_hits,0));
+    setStatText('stat-time',(s.avg_time||0)+'s');
+  } catch(e){ renderLocalStats(); }
+}
+
+function renderLocalStats(){
+  const passed=localRuns.reduce((a,r)=>a+r.passed,0);
+  const failed=localRuns.reduce((a,r)=>a+r.failed,0);
+  setStatText('stat-runs',localRuns.length);
+  setStatText('stat-passed',passed);
+  setStatText('stat-rate',passed+failed>0?Math.round(passed/(passed+failed)*100)+'% success rate':'— success rate');
+  setStatText('stat-healed',localRuns.reduce((a,r)=>a+r.healed,0));
+  setStatText('stat-rag',localRuns.reduce((a,r)=>a+r.rag_hits,0));
+  const avgT=localRuns.length?Math.round(localRuns.reduce((a,r)=>a+r.duration,0)/localRuns.length):0;
+  setStatText('stat-time',avgT+'s');
+  updateCharts();
+}
+
+function setStatText(id, val){const el=document.getElementById(id);if(el)el.textContent=val;}
+
+function initCharts(){
+  const dark='#1e2a3a'; const gridColor='rgba(0,220,130,0.08)';
+
+  Chart.defaults.color='#64748b';
+  Chart.defaults.borderColor=gridColor;
+
+  // Trend
+  const trendCtx=document.getElementById('trendChart')?.getContext('2d');
+  if(trendCtx) {
+    trendChart=new Chart(trendCtx,{
+      type:'bar',
+      data:{labels:[],datasets:[
+        {label:'Passed',data:[],backgroundColor:'rgba(0,220,130,0.5)',borderColor:'#00dc82',borderWidth:1,borderRadius:4},
+        {label:'Failed',data:[],backgroundColor:'rgba(255,69,103,0.4)',borderColor:'#ff4567',borderWidth:1,borderRadius:4},
+        {label:'Healed',data:[],backgroundColor:'rgba(255,149,0,0.4)',borderColor:'#ff9500',borderWidth:1,borderRadius:4},
+      ]},
+      options:{responsive:true,plugins:{legend:{display:false}},scales:{
+        x:{grid:{color:gridColor}},y:{grid:{color:gridColor},beginAtZero:true}
+      }}
+    });
+  }
+
+  // Donut
+  const donutCtx=document.getElementById('donutChart')?.getContext('2d');
+  if(donutCtx){
+    donutChart=new Chart(donutCtx,{
+      type:'doughnut',
+      data:{labels:['Passed','Failed','Healed'],datasets:[{data:[0,0,0],backgroundColor:['rgba(0,220,130,0.7)','rgba(255,69,103,0.7)','rgba(255,149,0,0.7)'],borderColor:['#00dc82','#ff4567','#ff9500'],borderWidth:2}]},
+      options:{responsive:true,cutout:'72%',plugins:{legend:{display:false}}}
+    });
+  }
+
+  // RAG vs LLM
+  const ragCtx=document.getElementById('ragChart')?.getContext('2d');
+  if(ragCtx){
+    ragChart=new Chart(ragCtx,{
+      type:'bar',
+      data:{labels:[],datasets:[
+        {label:'RAG Hits',data:[],backgroundColor:'rgba(168,85,247,0.5)',borderColor:'#a855f7',borderWidth:1,borderRadius:4},
+        {label:'LLM Calls',data:[],backgroundColor:'rgba(0,212,255,0.4)',borderColor:'#00d4ff',borderWidth:1,borderRadius:4},
+      ]},
+      options:{responsive:true,plugins:{legend:{labels:{color:'#94a3b8',font:{family:'Space Mono',size:11}}}},scales:{x:{grid:{color:gridColor}},y:{grid:{color:gridColor},beginAtZero:true}}}
+    });
+  }
+
+  // Phase breakdown
+  const phaseCtx=document.getElementById('phaseChart')?.getContext('2d');
+  if(phaseCtx){
+    phaseChart=new Chart(phaseCtx,{
+      type:'radar',
+      data:{labels:['NLP','Screenshots','RAG','LLM','Validation','Appium','Watcher','VisualDiff','SelfHeal','Report'],datasets:[{label:'Avg Time (s)',data:[1.2,3.5,1.8,4.2,0.9,5.1,0.5,2.3,1.4,0.8],backgroundColor:'rgba(0,212,255,0.15)',borderColor:'#00d4ff',borderWidth:2,pointBackgroundColor:'#00d4ff'}]},
+      options:{responsive:true,plugins:{legend:{display:false}},scales:{r:{grid:{color:gridColor},angleLines:{color:gridColor},pointLabels:{color:'#64748b',font:{size:10}},ticks:{color:'#64748b',font:{size:9}}}}}
+    });
+  }
+
+  updateCharts();
+}
+
+function updateCharts(){
+  if(!trendChart||!donutChart) return;
+  const runs=localRuns.slice(-10);
+  trendChart.data.labels=runs.map((_,i)=>'Run '+(i+1));
+  trendChart.data.datasets[0].data=runs.map(r=>r.passed||0);
+  trendChart.data.datasets[1].data=runs.map(r=>r.failed||0);
+  trendChart.data.datasets[2].data=runs.map(r=>r.healed||0);
+  trendChart.update();
+
+  const tp=localRuns.reduce((a,r)=>a+r.passed,0);
+  const tf=localRuns.reduce((a,r)=>a+r.failed,0);
+  const th=localRuns.reduce((a,r)=>a+r.healed,0);
+  donutChart.data.datasets[0].data=[tp,tf,th];
+  donutChart.update();
+
+  if(ragChart){
+    ragChart.data.labels=runs.map((_,i)=>'R'+(i+1));
+    ragChart.data.datasets[0].data=runs.map(r=>r.rag_hits||0);
+    ragChart.data.datasets[1].data=runs.map(r=>r.llm_calls||0);
+    ragChart.update();
+  }
+}
+
+function loadAnalytics(){
+  const avgT=localRuns.length?Math.round(localRuns.reduce((a,r)=>a+r.duration,0)/localRuns.length):24;
+  setStatText('a-avgtime',avgT+'s');
+  const totalRag=localRuns.reduce((a,r)=>a+r.rag_hits,0);
+  const totalLlm=localRuns.reduce((a,r)=>a+r.llm_calls,0);
+  if(totalRag+totalLlm>0) setStatText('a-ragefficiency',Math.round(totalRag/(totalRag+totalLlm)*100)+'%');
+  updateCharts();
+}
+
+// ══════════════════════════════════════════════════
+// REPORTS TABLE
+// ══════════════════════════════════════════════════
+async function loadReports(){
+  let runs=[];
+  try {
+    const r=await authFetch('/api/runs');
+    const data=await r.json();
+    runs=data.runs||[];
+  } catch(e){}
+  
+  if(runs.length===0) runs=localRuns;
+
+  const tbody=document.getElementById('runs-tbody');
+  if(!tbody) return;
+  if(runs.length===0){
+    tbody.innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--text-dim);padding:40px;">No test runs yet — upload an APK to begin</td></tr>';
+    return;
+  }
+  tbody.innerHTML=runs.slice().reverse().map(r=>`
+    <tr>
+      <td><span class="mono" style="font-size:11px;color:var(--text-dim);">${(r.run_id||'').slice(0,16)}...</span></td>
+      <td style="color:var(--text);">${r.apk||'—'}</td>
+      <td><span style="color:var(--green);font-weight:600;">${r.passed||0}</span></td>
+      <td><span style="color:var(--red);font-weight:600;">${r.failed||0}</span></td>
+      <td><span style="color:var(--orange);font-weight:600;">${r.healed||0}</span></td>
+      <td><span style="color:var(--purple);font-weight:600;">${r.rag_hits||0}</span></td>
+      <td class="mono" style="font-size:12px;">${r.duration||0}s</td>
+      <td><span class="badge ${(r.failed||0)===0?'badge-green':'badge-orange'}">${(r.failed||0)===0?'PASSED':'ISSUES'}</span></td>
+    </tr>`).join('');
+}
+
+// ══════════════════════════════════════════════════
+// TOAST
+// ══════════════════════════════════════════════════
+let toastTimer=null;
+function showToast(msg, type='success'){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.className='show '+type;
+  if(toastTimer) clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>{t.className='';},3500);
+}
+
+// ── Auto start demo if no backend ──
+window.addEventListener('load', ()=>{
+  // Try to hit API; if fails, show demo banner
+  setTimeout(async ()=>{
+    try { await fetch(`${API}/api/me`,{signal:AbortSignal.timeout(2000)}); }
+    catch(e) {
+      // Backend not running — simulate auth
+      if(!authToken){
+        // Auto-login with demo in offline mode
+        authToken='offline_demo_token';
+        localStorage.setItem('vf_token','offline_demo_token');
+      }
+      showDashboard('Demo Agent');
+      showToast('Running in demo mode (no backend)','success');
+      document.getElementById('sidebar-username').textContent='Demo Agent';
+      document.getElementById('user-avatar').textContent='D';
+    }
+  },500);
+});
+</script>
+
+<!-- Inline phase pipeline for overview (rendered inline with JS) -->
+<script>
+// Render the overview pipeline grid inline after DOM ready
+document.addEventListener('DOMContentLoaded',()=>{
+  const phases=[
+    {n:1,icon:"📥",label:"NLP Input",tag:"NLP"},
+    {n:2,icon:"📸",label:"Screenshot",tag:"ADB"},
+    {n:3,icon:"🔍",label:"RAG Search",tag:"ChromaDB"},
+    {n:4,icon:"🤖",label:"LLM Generate",tag:"GPT-4V"},
+    {n:5,icon:"✅",label:"Validation",tag:"Syntax"},
+    {n:6,icon:"⚙️",label:"Appium Run",tag:"Appium"},
+    {n:7,icon:"👁️",label:"Hash Watch",tag:"MD5"},
+    {n:8,icon:"🔄",label:"Visual Diff",tag:"SSIM"},
+    {n:9,icon:"🩹",label:"Self Heal",tag:"AutoFix"},
+    {n:10,icon:"📊",label:"Report",tag:"Output"}
+  ];
+  const container=document.querySelector('#page-overview .card:last-child > div:last-child');
+  if(container){
+    container.innerHTML=phases.map(p=>`
+      <div style="background:rgba(0,220,130,0.05);border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center;cursor:default;transition:all 0.2s;"
+        onmouseover="this.style.borderColor='var(--green)';this.style.background='rgba(0,220,130,0.1)';this.style.transform='translateY(-2px)'"
+        onmouseout="this.style.borderColor='var(--border)';this.style.background='rgba(0,220,130,0.05)';this.style.transform='translateY(0)'">
+        <div style="font-size:24px;margin-bottom:6px;">${p.icon}</div>
+        <div style="font-size:10px;font-family:'Space Mono',monospace;color:var(--green);margin-bottom:4px;">P${p.n}</div>
+        <div style="font-size:12px;font-weight:500;margin-bottom:6px;">${p.label}</div>
+        <span style="font-size:10px;padding:2px 8px;background:rgba(0,212,255,0.1);color:var(--cyan);border-radius:4px;font-family:'Space Mono',monospace;">${p.tag}</span>
+      </div>`).join('');
+  }
+});
+</script>
+</body>
+</html>
